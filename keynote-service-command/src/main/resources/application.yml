@@ -1,0 +1,17 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: keynote-command-service
+  kafka:
+    bootstrap-servers: localhost:9092
+
+axon:
+  axonserver:
+    servers: localhost:8124
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/

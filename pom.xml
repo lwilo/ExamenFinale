@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.conference</groupId>
+    <artifactId>conference-management-system</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>Conference Management System</name>
+    <description>Distributed Event-Driven Microservices System with CQRS and Event Sourcing</description>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.1.5</version>
+        <relativePath/>
+    </parent>
+
+    <modules>
+        <module>common-api</module>
+        <module>keynote-service-command</module>
+        <module>keynote-service-query</module>
+        <module>conference-service-command</module>
+        <module>conference-service-query</module>
+        <module>analytics-service</module>
+        <module>gateway-service</module>
+        <module>discovery-service</module>
+        <module>auth-service</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-cloud.version>2022.0.4</spring-cloud.version>
+        <axon.version>4.8.0</axon.version>
+        <lombok.version>1.18.30</lombok.version>
+        <mysql.version>8.0.33</mysql.version>
+        <kafka.version>3.5.1</kafka.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Axon Framework -->
+            <dependency>
+                <groupId>org.axonframework</groupId>
+                <artifactId>axon-spring-boot-starter</artifactId>
+                <version>${axon.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.axonframework</groupId>
+                <artifactId>axon-configuration</artifactId>
+                <version>${axon.version}</version>
+            </dependency>
+
+            <!-- MySQL -->
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>${mysql.version}</version>
+            </dependency>
+
+            <!-- Lombok -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

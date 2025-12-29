@@ -1,0 +1,292 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: keynote_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  axon-server:
+    image: axoniq/axonserver:latest
+    container_name: axon-server
+    ports:
+      - "8024:8024"
+      - "8124:8124"
+    environment:
+      - AXONIQ_AXONSERVER_DEVMODE_ENABLED=true
+    volumes:
+      - axon-data:/axonserver/data
+      - axon-events:/axonserver/events
+      - axon-config:/axonserver/config
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8024/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - microservices-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+    ports:
+      - "8080:8080"
+    command: start-dev
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Microservices
+
+  discovery-service:
+    build:
+      context: ./discovery-service
+      dockerfile: Dockerfile
+    container_name: discovery-service
+    ports:
+      - "8761:8761"
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  gateway-service:
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    container_name: gateway-service
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8888:8888"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "9999:9999"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/auth_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  keynote-command-service:
+    build:
+      context: ./keynote-service-command
+      dockerfile: Dockerfile
+    container_name: keynote-command-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/keynote_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      AXON_AXONSERVER_SERVERS: axon-server:8124
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  keynote-query-service:
+    build:
+      context: ./keynote-service-query
+      dockerfile: Dockerfile
+    container_name: keynote-query-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/keynote_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      AXON_AXONSERVER_SERVERS: axon-server:8124
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  conference-command-service:
+    build:
+      context: ./conference-service-command
+      dockerfile: Dockerfile
+    container_name: conference-command-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/conference_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      AXON_AXONSERVER_SERVERS: axon-server:8124
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  conference-query-service:
+    build:
+      context: ./conference-service-query
+      dockerfile: Dockerfile
+    container_name: conference-query-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      axon-server:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/conference_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      AXON_AXONSERVER_SERVERS: axon-server:8124
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      discovery-service:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - microservices-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    depends_on:
+      - gateway-service
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8888
+    networks:
+      - microservices-network
+
+volumes:
+  mysql-data:
+  axon-data:
+  axon-events:
+  axon-config:
+
+networks:
+  microservices-network:
+    driver: bridge

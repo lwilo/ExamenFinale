@@ -1,0 +1,48 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: keynote-command-service
+          uri: lb://keynote-command-service
+          predicates:
+            - Path=/keynotes/commands/**
+        - id: keynote-query-service
+          uri: lb://keynote-query-service
+          predicates:
+            - Path=/keynotes/queries/**
+        - id: conference-command-service
+          uri: lb://conference-command-service
+          predicates:
+            - Path=/conferences/commands/**
+        - id: conference-query-service
+          uri: lb://conference-query-service
+          predicates:
+            - Path=/conferences/queries/**
+        - id: analytics-service
+          uri: lb://analytics-service
+          predicates:
+            - Path=/analytics/**
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
